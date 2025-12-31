@@ -1,15 +1,22 @@
 package main
 
 import (
+	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/jabreu610/gator/internal/config"
+	"github.com/jabreu610/gator/internal/database"
+	_ "github.com/lib/pq"
 )
 
 type state struct {
 	config *config.Config
+	db     *database.Queries
 }
 
 type command struct {
@@ -33,11 +40,47 @@ func handlerLogin(s *state, cmd command) error {
 	if len(cmd.args) < 1 {
 		return errors.New("'login' command expects one argument, the username")
 	}
-	if err := s.config.SetUser(cmd.args[0]); err != nil {
+	u, err := s.db.GetUserByName(context.Background(), cmd.args[0])
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("user %s does not exist, register the user first", cmd.args[0])
+		}
 		return err
 	}
-	fmt.Printf("'%s' now logged in\n", cmd.args[0])
 
+	if err := s.config.SetUser(u.Name); err != nil {
+		return err
+	}
+	fmt.Printf("'%s' now logged in\n", u.Name)
+
+	return nil
+}
+
+func handlerRegister(s *state, cmd command) error {
+	if len(cmd.args) < 1 {
+		return errors.New("'login' command expects one argument, the username")
+	}
+	name := cmd.args[0]
+	newUser := database.CreateUserParams{
+		ID: uuid.New(),
+		CreatedAt: sql.NullTime{
+			Time:  time.Now(),
+			Valid: true,
+		},
+		UpdatedAt: sql.NullTime{
+			Time:  time.Now(),
+			Valid: true,
+		},
+		Name: name,
+	}
+	u, err := s.db.CreateUser(context.Background(), newUser)
+	if err != nil {
+		return err
+	}
+	if err := s.config.SetUser(u.Name); err != nil {
+		return err
+	}
+	fmt.Printf("User successfully registered and logged in: %+v", u)
 	return nil
 }
 
@@ -55,6 +98,15 @@ func main() {
 		cmdMap: make(map[string]func(*state, command) error),
 	}
 	commands.register("login", handlerLogin)
+	commands.register("register", handlerRegister)
+
+	db, err := sql.Open("postgres", c.DBURL)
+	if err != nil {
+		fmt.Println("Unable to establish connection to database, please verify database connection string in configuration.")
+		os.Exit(1)
+	}
+	dbQueries := database.New(db)
+	s.db = dbQueries
 
 	args := os.Args
 	if len(args) < 2 {
