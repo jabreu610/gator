@@ -84,6 +84,14 @@ func handlerRegister(s *state, cmd command) error {
 	return nil
 }
 
+func handlerReset(s *state, cmd command) error {
+	if err := s.db.ClearUsers(context.Background()); err != nil {
+		return fmt.Errorf("Failed to reset users table: %w", err)
+	}
+	fmt.Println("Successfully cleared user table")
+	return nil
+}
+
 func main() {
 	c, err := config.Read()
 	if err != nil {
@@ -99,6 +107,7 @@ func main() {
 	}
 	commands.register("login", handlerLogin)
 	commands.register("register", handlerRegister)
+	commands.register("reset", handlerReset)
 
 	db, err := sql.Open("postgres", c.DBURL)
 	if err != nil {
