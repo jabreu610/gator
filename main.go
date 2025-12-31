@@ -92,6 +92,22 @@ func handlerReset(s *state, cmd command) error {
 	return nil
 }
 
+func handlerUsers(s *state, cmd command) error {
+	currentUser := s.config.CurrentUser
+	u, err := s.db.ListUsers(context.Background())
+	if err != nil {
+		return err
+	}
+	for _, user := range u {
+		entry := fmt.Sprintf("* %s", user.Name)
+		if user.Name == currentUser {
+			entry += " (current)"
+		}
+		fmt.Println(entry)
+	}
+	return nil
+}
+
 func main() {
 	c, err := config.Read()
 	if err != nil {
@@ -108,6 +124,7 @@ func main() {
 	commands.register("login", handlerLogin)
 	commands.register("register", handlerRegister)
 	commands.register("reset", handlerReset)
+	commands.register("users", handlerUsers)
 
 	db, err := sql.Open("postgres", c.DBURL)
 	if err != nil {

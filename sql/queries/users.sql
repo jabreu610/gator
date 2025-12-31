@@ -15,3 +15,6 @@ WHERE name = $1;
 
 -- name: ClearUsers :exec
 TRUNCATE TABLE users;
+
+-- name: ListUsers :many
+SELECT * FROM users;
