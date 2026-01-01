@@ -14,7 +14,7 @@ WHERE name = $1;
 
 
 -- name: ClearUsers :exec
-TRUNCATE TABLE users;
+TRUNCATE TABLE users CASCADE;
 
 -- name: ListUsers :many
 SELECT * FROM users;

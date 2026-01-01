@@ -38,6 +38,14 @@ func (c commands) register(name string, f func(*state, command) error) {
 	c.cmdMap[name] = f
 }
 
+func getCurrentUser(ctx context.Context, s *state) (database.User, error) {
+	u, err := s.db.GetUserByName(ctx, s.config.CurrentUser)
+	if err != nil {
+		return database.User{}, err
+	}
+	return u, nil
+}
+
 func handlerLogin(s *state, cmd command) error {
 	if len(cmd.args) < 1 {
 		return errors.New("'login' command expects one argument, the username")
@@ -131,6 +139,53 @@ func handlerAgg(s *state, cmd command) error {
 	return nil
 }
 
+func handlerAddFeed(s *state, cmd command) error {
+	if len(cmd.args) < 2 {
+		return fmt.Errorf("'AddFeed' command expects two arguments: the name of the feed and the url")
+	}
+	context := context.Background()
+	u, err := getCurrentUser(context, s)
+	if err != nil {
+		return err
+	}
+	newFeed := database.CreateFeedParams{
+		ID: uuid.New(),
+		CreatedAt: sql.NullTime{
+			Time:  time.Now(),
+			Valid: true,
+		},
+		UpdatedAt: sql.NullTime{
+			Time:  time.Now(),
+			Valid: true,
+		},
+		Name:   cmd.args[0],
+		Url:    cmd.args[1],
+		UserID: u.ID,
+	}
+	f, err := s.db.CreateFeed(context, newFeed)
+	p, err := json.MarshalIndent(f, "", "  ")
+	if err != nil {
+		fmt.Printf("%+v\n", f)
+		return nil
+	}
+	fmt.Println(string(p))
+	return nil
+}
+
+func handlerFeeds(s *state, cmd command) error {
+	f, err := s.db.GetAllFeeds(context.Background())
+	if err != nil {
+		return err
+	}
+	p, err := json.MarshalIndent(f, "", "  ")
+	if err != nil {
+		fmt.Printf("%+v\n", f)
+		return nil
+	}
+	fmt.Println(string(p))
+	return nil
+}
+
 func main() {
 	c, err := config.Read()
 	if err != nil {
@@ -149,6 +204,8 @@ func main() {
 	commands.register("reset", handlerReset)
 	commands.register("users", handlerUsers)
 	commands.register("agg", handlerAgg)
+	commands.register("addfeed", handlerAddFeed)
+	commands.register("feeds", handlerFeeds)
 
 	db, err := sql.Open("postgres", c.DBURL)
 	if err != nil {
