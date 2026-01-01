@@ -7,12 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jabreu610/gator/internal/config"
 	"github.com/jabreu610/gator/internal/database"
 	"github.com/jabreu610/gator/internal/rss"
+	"github.com/lib/pq"
 	_ "github.com/lib/pq"
 )
 
@@ -72,7 +74,38 @@ func scrapeFeeds(ctx context.Context, s *state) error {
 
 	r, err := rss.FetchFeed(ctx, f.Url)
 	for _, item := range r.Channel.Item {
-		fmt.Printf("* %s\n", item.Title)
+		if len(item.Title) > 0 {
+			pubTime, err := time.Parse(time.RFC1123Z, item.PubDate)
+			isPubTimeValid := true
+			if err != nil {
+				isPubTimeValid = false
+			}
+			params := database.CreatePostParams{
+				ID:        uuid.New(),
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+				Title:     item.Title,
+				Url:       item.Link,
+				Description: sql.NullString{
+					String: item.Description,
+					Valid:  len(item.Description) > 0,
+				},
+				PublishedAt: sql.NullTime{
+					Time:  pubTime,
+					Valid: isPubTimeValid,
+				},
+				FeedID: f.ID,
+			}
+			p, err := s.db.CreatePost(ctx, params)
+			if err != nil {
+				var pqErr *pq.Error
+				if !errors.As(err, &pqErr) && pqErr.Code != "23505" {
+					fmt.Printf("Error saving post %s: %v\n", item.Title, err)
+				}
+			} else {
+				fmt.Printf("Successfully saved post %s\n", p.Title)
+			}
+		}
 	}
 
 	return nil
@@ -274,6 +307,28 @@ func handlerUnfollow(s *state, cmd command, u database.User) error {
 	return nil
 }
 
+func handlerBrowse(s *state, cmd command, u database.User) error {
+	var limit int32 = 2
+	if len(cmd.args) >= 1 {
+		v, err := strconv.Atoi(cmd.args[0])
+		if err == nil {
+			limit = int32(v)
+		}
+	}
+	params := database.GetPostsForUserParams{
+		UserID: u.ID,
+		Limit:  limit,
+	}
+	p, err := s.db.GetPostsForUser(context.Background(), params)
+	if err != nil {
+		return err
+	}
+	for _, post := range p {
+		fmt.Printf("* %s, published at: %v\n", post.Title, post.PublishedAt.Time)
+	}
+	return nil
+}
+
 func main() {
 	c, err := config.Read()
 	if err != nil {
@@ -297,6 +352,7 @@ func main() {
 	commands.register("follow", middlewareLoggedIn(handlerFollow))
 	commands.register("following", middlewareLoggedIn(handlerFollowing))
 	commands.register("unfollow", middlewareLoggedIn(handlerUnfollow))
+	commands.register("browse", middlewareLoggedIn(handlerBrowse))
 
 	db, err := sql.Open("postgres", c.DBURL)
 	if err != nil {
