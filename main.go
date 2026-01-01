@@ -58,6 +58,26 @@ func createFeedFollowRecord(ctx context.Context, s *state, userID uuid.UUID, fee
 	return err
 }
 
+func scrapeFeeds(ctx context.Context, s *state) error {
+	f, err := s.db.GetNextFeedToFetch(ctx)
+	if err != nil {
+		return err
+	}
+
+	if err = s.db.MarkFeedFetched(ctx, f.ID); err != nil {
+		return err
+	}
+
+	fmt.Printf("Fetching %s; last fetched %v\n", f.Name, f.LastFetchedAt)
+
+	r, err := rss.FetchFeed(ctx, f.Url)
+	for _, item := range r.Channel.Item {
+		fmt.Printf("* %s\n", item.Title)
+	}
+
+	return nil
+}
+
 func middlewareLoggedIn(handler func(s *state, cmd command, user database.User) error) func(*state, command) error {
 	return func(s *state, cmd command) error {
 		u, err := getCurrentUser(context.Background(), s)
@@ -136,24 +156,22 @@ func handlerUsers(s *state, cmd command) error {
 }
 
 func handlerAgg(s *state, cmd command) error {
-	var feedURL string
 	if len(cmd.args) < 1 {
-		// return errors.New("'agg' command expects one argument, the feed url")
-		feedURL = "https://www.wagslane.dev/index.xml"
-	} else {
-		feedURL = cmd.args[0]
+		return errors.New("'agg' command expects one argument, the request interval eg 1m")
 	}
-	r, err := rss.FetchFeed(context.Background(), feedURL)
+
+	ctx := context.Background()
+	interval, err := time.ParseDuration(cmd.args[0])
 	if err != nil {
 		return err
 	}
-	p, err := json.MarshalIndent(r, "", "  ")
-	if err != nil {
-		fmt.Printf("%+v\n", r)
-		return nil
+	fmt.Printf("Collecting feeds every %s\n", cmd.args[0])
+
+	ticker := time.NewTicker(interval)
+
+	for ; ; <-ticker.C {
+		scrapeFeeds(ctx, s)
 	}
-	fmt.Println(string(p))
-	return nil
 }
 
 func handlerAddFeed(s *state, cmd command, u database.User) error {
