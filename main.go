@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jabreu610/gator/internal/config"
 	"github.com/jabreu610/gator/internal/database"
+	"github.com/jabreu610/gator/internal/rss"
 	_ "github.com/lib/pq"
 )
 
@@ -108,6 +110,27 @@ func handlerUsers(s *state, cmd command) error {
 	return nil
 }
 
+func handlerAgg(s *state, cmd command) error {
+	var feedURL string
+	if len(cmd.args) < 1 {
+		// return errors.New("'agg' command expects one argument, the feed url")
+		feedURL = "https://www.wagslane.dev/index.xml"
+	} else {
+		feedURL = cmd.args[0]
+	}
+	r, err := rss.FetchFeed(context.Background(), feedURL)
+	if err != nil {
+		return err
+	}
+	p, err := json.MarshalIndent(r, "", "  ")
+	if err != nil {
+		fmt.Printf("%+v\n", r)
+		return nil
+	}
+	fmt.Println(string(p))
+	return nil
+}
+
 func main() {
 	c, err := config.Read()
 	if err != nil {
@@ -125,6 +148,7 @@ func main() {
 	commands.register("register", handlerRegister)
 	commands.register("reset", handlerReset)
 	commands.register("users", handlerUsers)
+	commands.register("agg", handlerAgg)
 
 	db, err := sql.Open("postgres", c.DBURL)
 	if err != nil {
