@@ -7,7 +7,7 @@ package database
 
 import (
 	"context"
-	"database/sql"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -32,16 +32,16 @@ JOIN feeds fe ON f.feed_id = fe.id
 
 type CreateFeedFollowParams struct {
 	ID        uuid.UUID
-	CreatedAt sql.NullTime
-	UpdatedAt sql.NullTime
+	CreatedAt time.Time
+	UpdatedAt time.Time
 	UserID    uuid.UUID
 	FeedID    uuid.UUID
 }
 
 type CreateFeedFollowRow struct {
 	ID        uuid.UUID
-	CreatedAt sql.NullTime
-	UpdatedAt sql.NullTime
+	CreatedAt time.Time
+	UpdatedAt time.Time
 	UserID    uuid.UUID
 	FeedID    uuid.UUID
 	UserName  string

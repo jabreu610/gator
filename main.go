@@ -48,17 +48,11 @@ func getCurrentUser(ctx context.Context, s *state) (database.User, error) {
 
 func createFeedFollowRecord(ctx context.Context, s *state, userID uuid.UUID, feedID uuid.UUID) error {
 	newFollow := database.CreateFeedFollowParams{
-		ID: uuid.New(),
-		CreatedAt: sql.NullTime{
-			Time:  time.Now(),
-			Valid: true,
-		},
-		UpdatedAt: sql.NullTime{
-			Time:  time.Now(),
-			Valid: true,
-		},
-		UserID: userID,
-		FeedID: feedID,
+		ID:        uuid.New(),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		UserID:    userID,
+		FeedID:    feedID,
 	}
 	_, err := s.db.CreateFeedFollow(ctx, newFollow)
 	return err
@@ -101,16 +95,10 @@ func handlerRegister(s *state, cmd command) error {
 	}
 	name := cmd.args[0]
 	newUser := database.CreateUserParams{
-		ID: uuid.New(),
-		CreatedAt: sql.NullTime{
-			Time:  time.Now(),
-			Valid: true,
-		},
-		UpdatedAt: sql.NullTime{
-			Time:  time.Now(),
-			Valid: true,
-		},
-		Name: name,
+		ID:        uuid.New(),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Name:      name,
 	}
 	u, err := s.db.CreateUser(context.Background(), newUser)
 	if err != nil {
@@ -175,18 +163,12 @@ func handlerAddFeed(s *state, cmd command, u database.User) error {
 	ctx := context.Background()
 
 	newFeed := database.CreateFeedParams{
-		ID: uuid.New(),
-		CreatedAt: sql.NullTime{
-			Time:  time.Now(),
-			Valid: true,
-		},
-		UpdatedAt: sql.NullTime{
-			Time:  time.Now(),
-			Valid: true,
-		},
-		Name:   cmd.args[0],
-		Url:    cmd.args[1],
-		UserID: u.ID,
+		ID:        uuid.New(),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Name:      cmd.args[0],
+		Url:       cmd.args[1],
+		UserID:    u.ID,
 	}
 	f, err := s.db.CreateFeed(ctx, newFeed)
 	p, err := json.MarshalIndent(f, "", "  ")

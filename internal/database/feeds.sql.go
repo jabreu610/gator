@@ -7,7 +7,7 @@ package database
 
 import (
 	"context"
-	"database/sql"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -22,13 +22,13 @@ VALUES (
     $5,
     $6
 )
-RETURNING id, created_at, updated_at, name, url, user_id
+RETURNING id, created_at, updated_at, name, url, user_id, last_fetched_at
 `
 
 type CreateFeedParams struct {
 	ID        uuid.UUID
-	CreatedAt sql.NullTime
-	UpdatedAt sql.NullTime
+	CreatedAt time.Time
+	UpdatedAt time.Time
 	Name      string
 	Url       string
 	UserID    uuid.UUID
@@ -51,6 +51,7 @@ func (q *Queries) CreateFeed(ctx context.Context, arg CreateFeedParams) (Feed, e
 		&i.Name,
 		&i.Url,
 		&i.UserID,
+		&i.LastFetchedAt,
 	)
 	return i, err
 }
@@ -91,7 +92,7 @@ func (q *Queries) GetAllFeeds(ctx context.Context) ([]GetAllFeedsRow, error) {
 }
 
 const getFeedByURL = `-- name: GetFeedByURL :one
-SELECT id, created_at, updated_at, name, url, user_id
+SELECT id, created_at, updated_at, name, url, user_id, last_fetched_at
 FROM feeds
 WHERE url = $1
 `
@@ -106,6 +107,7 @@ func (q *Queries) GetFeedByURL(ctx context.Context, url string) (Feed, error) {
 		&i.Name,
 		&i.Url,
 		&i.UserID,
+		&i.LastFetchedAt,
 	)
 	return i, err
 }
