@@ -46,6 +46,35 @@ func getCurrentUser(ctx context.Context, s *state) (database.User, error) {
 	return u, nil
 }
 
+func createFeedFollowRecord(ctx context.Context, s *state, userID uuid.UUID, feedID uuid.UUID) error {
+	newFollow := database.CreateFeedFollowParams{
+		ID: uuid.New(),
+		CreatedAt: sql.NullTime{
+			Time:  time.Now(),
+			Valid: true,
+		},
+		UpdatedAt: sql.NullTime{
+			Time:  time.Now(),
+			Valid: true,
+		},
+		UserID: userID,
+		FeedID: feedID,
+	}
+	_, err := s.db.CreateFeedFollow(ctx, newFollow)
+	return err
+}
+
+func middlewareLoggedIn(handler func(s *state, cmd command, user database.User) error) func(*state, command) error {
+	return func(s *state, cmd command) error {
+		u, err := getCurrentUser(context.Background(), s)
+		if err != nil {
+			return err
+		}
+
+		return handler(s, cmd, u)
+	}
+}
+
 func handlerLogin(s *state, cmd command) error {
 	if len(cmd.args) < 1 {
 		return errors.New("'login' command expects one argument, the username")
@@ -139,15 +168,12 @@ func handlerAgg(s *state, cmd command) error {
 	return nil
 }
 
-func handlerAddFeed(s *state, cmd command) error {
+func handlerAddFeed(s *state, cmd command, u database.User) error {
 	if len(cmd.args) < 2 {
-		return fmt.Errorf("'AddFeed' command expects two arguments: the name of the feed and the url")
+		return fmt.Errorf("'addfeed' command expects two arguments: the name of the feed and the url")
 	}
-	context := context.Background()
-	u, err := getCurrentUser(context, s)
-	if err != nil {
-		return err
-	}
+	ctx := context.Background()
+
 	newFeed := database.CreateFeedParams{
 		ID: uuid.New(),
 		CreatedAt: sql.NullTime{
@@ -162,13 +188,18 @@ func handlerAddFeed(s *state, cmd command) error {
 		Url:    cmd.args[1],
 		UserID: u.ID,
 	}
-	f, err := s.db.CreateFeed(context, newFeed)
+	f, err := s.db.CreateFeed(ctx, newFeed)
 	p, err := json.MarshalIndent(f, "", "  ")
 	if err != nil {
 		fmt.Printf("%+v\n", f)
 		return nil
 	}
 	fmt.Println(string(p))
+
+	if err := createFeedFollowRecord(ctx, s, u.ID, f.ID); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -183,6 +214,63 @@ func handlerFeeds(s *state, cmd command) error {
 		return nil
 	}
 	fmt.Println(string(p))
+	return nil
+}
+
+func handlerFollow(s *state, cmd command, u database.User) error {
+	if len(cmd.args) < 1 {
+		return fmt.Errorf("'follow' command expects one argument: the url")
+	}
+	ctx := context.Background()
+
+	f, err := s.db.GetFeedByURL(ctx, cmd.args[0])
+	if err != nil {
+		return err
+	}
+
+	if err := createFeedFollowRecord(ctx, s, u.ID, f.ID); err != nil {
+		return err
+	}
+	fmt.Printf("user %s is now following %s\n", u.Name, f.Name)
+
+	return nil
+}
+
+func handlerFollowing(s *state, cmd command, u database.User) error {
+	ctx := context.Background()
+
+	ff, err := s.db.GetFeedFollowsForUser(ctx, u.ID)
+	if err != nil {
+		return nil
+	}
+
+	for _, follow := range ff {
+		fmt.Printf("* %s\n", follow.FeedName)
+	}
+
+	return nil
+}
+
+func handlerUnfollow(s *state, cmd command, u database.User) error {
+	if len(cmd.args) < 1 {
+		return fmt.Errorf("'unfollow' command expects one argument: the url")
+	}
+	ctx := context.Background()
+	f, err := s.db.GetFeedByURL(ctx, cmd.args[0])
+	if err != nil {
+		return err
+	}
+
+	params := database.DeleteFeedFollowParams{
+		UserID: u.ID,
+		FeedID: f.ID,
+	}
+	if err := s.db.DeleteFeedFollow(context.Background(), params); err != nil {
+		return err
+	}
+
+	fmt.Printf("user %s is no longer following %s\n", u.Name, f.Name)
+
 	return nil
 }
 
@@ -204,8 +292,11 @@ func main() {
 	commands.register("reset", handlerReset)
 	commands.register("users", handlerUsers)
 	commands.register("agg", handlerAgg)
-	commands.register("addfeed", handlerAddFeed)
+	commands.register("addfeed", middlewareLoggedIn(handlerAddFeed))
 	commands.register("feeds", handlerFeeds)
+	commands.register("follow", middlewareLoggedIn(handlerFollow))
+	commands.register("following", middlewareLoggedIn(handlerFollowing))
+	commands.register("unfollow", middlewareLoggedIn(handlerUnfollow))
 
 	db, err := sql.Open("postgres", c.DBURL)
 	if err != nil {
